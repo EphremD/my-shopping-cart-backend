@@ -19,7 +19,7 @@ app.get('/', (req, res) => {
   res.json({ 
     message: 'My Shopping Cart API is running!',
     timestamp: new Date().toISOString(),
-    database: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected'
+    environment: process.env.NODE_ENV || 'development'
   });
 });
 
@@ -30,7 +30,7 @@ app.get('/health', (req, res) => {
     status: 'OK',
     timestamp: new Date().toISOString(),
     database: dbStatus,
-    uptime: process.uptime()
+    environment: process.env.NODE_ENV || 'development'
   });
 });
 
@@ -39,21 +39,27 @@ const MONGODB_URI = process.env.MONGODB_URI;
 
 if (!MONGODB_URI) {
   console.error('❌ MONGODB_URI is not defined in environment variables');
-  process.exit(1);
+  console.log('💡 Please add MONGODB_URI to your environment variables');
+  
+  // Don't exit in production, just log the error
+  if (process.env.NODE_ENV === 'production') {
+    console.log('🔄 Continuing without database connection in production');
+  } else {
+    process.exit(1);
+  }
+} else {
+  mongoose.connect(MONGODB_URI)
+    .then(() => {
+      console.log('✅ Connected to MongoDB Atlas');
+      console.log('📊 Database:', mongoose.connection.name);
+    })
+    .catch(err => {
+      console.error('❌ MongoDB connection error:', err.message);
+      if (process.env.NODE_ENV === 'production') {
+        console.log('🔄 Continuing without database connection');
+      }
+    });
 }
-
-mongoose.connect(MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
-  .then(() => {
-    console.log('✅ Connected to MongoDB Atlas');
-    console.log('📊 Database:', mongoose.connection.name);
-  })
-  .catch(err => {
-    console.error('❌ MongoDB connection error:', err.message);
-    console.log('💡 Tip: Check your MONGODB_URI in .env file');
-  });
 
 // Database connection events
 mongoose.connection.on('error', err => {
@@ -70,14 +76,14 @@ mongoose.connection.on('reconnected', () => {
 
 const PORT = process.env.PORT || 5000;
 
-// Only start server if MongoDB connects successfully
-mongoose.connection.once('open', () => {
-  app.listen(PORT, () => {
-    console.log(`🚀 Server is running on port ${PORT}`);
-    console.log(`📍 Local: http://localhost:${PORT}`);
-    console.log(`📚 API Health: http://localhost:${PORT}/health`);
-    console.log(`🛍️ Products API: http://localhost:${PORT}/api/products`);
-  });
+app.listen(PORT, () => {
+  console.log(`🚀 Server is running on port ${PORT}`);
+  console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`📚 API Health: http://localhost:${PORT}/health`);
+  
+  if (!MONGODB_URI) {
+    console.log('⚠️  Running without database connection');
+  }
 });
 
 // Handle graceful shutdown
