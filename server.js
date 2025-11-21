@@ -31,6 +31,14 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
+app.use(express.json());
+
+// ⭐⭐⭐ ROUTE IMPORTS - ADD THIS SECTION ⭐⭐⭐
+app.use('/api/auth', require('./routes/auth'));
+app.use('/api/products', require('./routes/products'));
+app.use('/api/cart', require('./routes/cart'));
+// ⭐⭐⭐ END OF ROUTE IMPORTS ⭐⭐⭐
+
 // Basic route
 app.get('/', (req, res) => {
   res.json({ 
