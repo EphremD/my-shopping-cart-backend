@@ -5,8 +5,27 @@ require('dotenv').config();
 
 const app = express();
 
+// Debug: Log all environment variables (except sensitive ones)
+console.log('🔍 Environment Variables Check:');
+console.log('NODE_ENV:', process.env.NODE_ENV);
+console.log('PORT:', process.env.PORT);
+console.log('MONGODB_URI exists:', !!process.env.MONGODB_URI);
+console.log('JWT_SECRET exists:', !!process.env.JWT_SECRET);
+console.log('CLIENT_URL:', process.env.CLIENT_URL);
+
+// Try multiple possible environment variable names for MongoDB
+const MONGODB_URI = process.env.MONGODB_URI || process.env.DATABASE_URL || process.env.MONGO_URL;
+
+console.log('🔍 Checking database connection strings:');
+console.log('MONGODB_URI:', !!process.env.MONGODB_URI);
+console.log('DATABASE_URL:', !!process.env.DATABASE_URL);
+console.log('MONGO_URL:', !!process.env.MONGO_URL);
+
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: process.env.CLIENT_URL || 'http://localhost:3000',
+  credentials: true
+}));
 app.use(express.json());
 
 // Routes
@@ -19,7 +38,8 @@ app.get('/', (req, res) => {
   res.json({ 
     message: 'My Shopping Cart API is running!',
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || 'development',
+    databaseConnected: mongoose.connection.readyState === 1
   });
 });
 
@@ -34,59 +54,49 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Database connection with better error handling
-const MONGODB_URI = process.env.MONGODB_URI;
+// Database connection
+const connectDB = async () => {
+  try {
+    const MONGODB_URI = process.env.MONGODB_URI;
+    
+    console.log('🔧 Attempting MongoDB connection...');
+    console.log('MONGODB_URI length:', MONGODB_URI ? MONGODB_URI.length : 'undefined');
+    
+    if (!MONGODB_URI) {
+      console.error('❌ MONGODB_URI is not defined in environment variables');
+      console.log('💡 Available env vars:', Object.keys(process.env).filter(key => 
+        !key.toLowerCase().includes('secret') && !key.toLowerCase().includes('key')
+      ));
+      return;
+    }
 
-if (!MONGODB_URI) {
-  console.error('❌ MONGODB_URI is not defined in environment variables');
-  console.log('💡 Please add MONGODB_URI to your environment variables');
-  
-  // Don't exit in production, just log the error
-  if (process.env.NODE_ENV === 'production') {
-    console.log('🔄 Continuing without database connection in production');
-  } else {
-    process.exit(1);
+    await mongoose.connect(MONGODB_URI);
+    console.log('✅ Connected to MongoDB Atlas');
+    console.log('📊 Database:', mongoose.connection.name);
+  } catch (error) {
+    console.error('❌ MongoDB connection failed:', error.message);
+    if (process.env.NODE_ENV === 'production') {
+      console.log('🔄 Continuing without database connection');
+    }
   }
-} else {
-  mongoose.connect(MONGODB_URI)
-    .then(() => {
-      console.log('✅ Connected to MongoDB Atlas');
-      console.log('📊 Database:', mongoose.connection.name);
-    })
-    .catch(err => {
-      console.error('❌ MongoDB connection error:', err.message);
-      if (process.env.NODE_ENV === 'production') {
-        console.log('🔄 Continuing without database connection');
-      }
-    });
-}
+};
 
-// Database connection events
-mongoose.connection.on('error', err => {
-  console.error('❌ MongoDB connection error:', err);
-});
-
-mongoose.connection.on('disconnected', () => {
-  console.log('⚠️ MongoDB disconnected');
-});
-
-mongoose.connection.on('reconnected', () => {
-  console.log('✅ MongoDB reconnected');
-});
-
-const PORT = process.env.PORT || 5000;
-
-app.listen(PORT, () => {
-  console.log(`🚀 Server is running on port ${PORT}`);
-  console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`📚 API Health: http://localhost:${PORT}/health`);
+// Start server
+const startServer = async () => {
+  await connectDB();
   
-  if (!MONGODB_URI) {
-    console.log('⚠️  Running without database connection');
-  }
-});
+  const PORT = process.env.PORT || 5000;
+  
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Server is running on port ${PORT}`);
+    console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`🌐 CORS enabled for: ${process.env.CLIENT_URL || 'http://localhost:3000'}`);
+  });
+};
 
-// Handle graceful shutdown
+startServer().catch(console.error);
+
+// Graceful shutdown
 process.on('SIGINT', async () => {
   await mongoose.connection.close();
   console.log('🛑 MongoDB connection closed');
